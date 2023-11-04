@@ -4,11 +4,12 @@ use alloc::sync::Arc;
 use crate::{
     config::MAX_SYSCALL_NUM,
     loader::get_app_data_by_name,
-    mm::{translated_refmut, translated_str},
+    mm::{translated_refmut, translated_str, copy_data_to_user_space},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
         suspend_current_and_run_next, TaskStatus,
     },
+    timer
 };
 
 #[repr(C)]
@@ -122,7 +123,14 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let us = timer::get_time_us();
+    let ts = &TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
+    //print!("sec:{} us:{}\n", ts.sec, ts.usec);
+    copy_data_to_user_space(current_user_token(), _ts as *const u8, ts);
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
