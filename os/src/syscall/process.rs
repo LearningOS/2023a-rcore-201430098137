@@ -1,10 +1,9 @@
 //! Process management syscalls
-use crate::{
-    config::MAX_SYSCALL_NUM,
-    task::{
-        change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus,
-    },
-};
+use crate::{config::MAX_SYSCALL_NUM, task::{
+    change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus
+}, timer};
+use crate::task::current_user_token;
+use crate::mm::copy_data_to_user_space;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -42,14 +41,26 @@ pub fn sys_yield() -> isize {
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
+    let us = timer::get_time_us();
+    let ts = &TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
+    //print!("sec:{} us:{}\n", ts.sec, ts.usec);
+    copy_data_to_user_space(current_user_token(), _ts as *const u8, ts);
+
+    //_ts.offset()
     trace!("kernel: sys_get_time");
-    -1
+    //print!("ts:{:?}", _ts);
+    0
 }
 
 /// YOUR JOB: Finish sys_task_info to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TaskInfo`] is splitted by two pages ?
 pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
+
+
     trace!("kernel: sys_task_info NOT IMPLEMENTED YET!");
     -1
 }
@@ -74,3 +85,5 @@ pub fn sys_sbrk(size: i32) -> isize {
         -1
     }
 }
+
+

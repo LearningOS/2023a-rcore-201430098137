@@ -3,6 +3,7 @@
 use super::{frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
 use alloc::vec;
 use alloc::vec::Vec;
+use core::mem::size_of_val;
 use bitflags::*;
 
 bitflags! {
@@ -170,4 +171,20 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
         start = end_va.into();
     }
     v
+}
+
+
+/// byte copy data to user pointer
+pub fn copy_data_to_user_space<T>(token: usize, ptr: *const u8, data:&T) {
+    let buffers = translated_byte_buffer(token, ptr as *const u8, size_of_val(data));
+    let data = unsafe {core::slice::from_raw_parts(data as *const _ as usize as *const u8, size_of_val(data))};
+
+    let mut start:usize = 0;
+    for buffer in buffers {
+        buffer.copy_from_slice(&data[start..data.len().min(start+buffer.len())]);
+        start += buffer.len();
+        if start >= data.len() {
+            break
+        }
+    }
 }
