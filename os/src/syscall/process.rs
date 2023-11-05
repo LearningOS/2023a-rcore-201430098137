@@ -1,8 +1,8 @@
 //! Process management syscalls
-use crate::{config::MAX_SYSCALL_NUM, task::{
-    change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus
+use crate::{task::{
+    change_program_brk, exit_current_and_run_next, suspend_current_and_run_next
 }, timer};
-use crate::task::current_user_token;
+use crate::task::{current_user_token, get_current_task, mmap, munmap, TaskInfo};
 use crate::mm::copy_data_to_user_space;
 
 #[repr(C)]
@@ -12,16 +12,16 @@ pub struct TimeVal {
     pub usec: usize,
 }
 
-/// Task information
-#[allow(dead_code)]
-pub struct TaskInfo {
-    /// Task status in it's life cycle
-    status: TaskStatus,
-    /// The numbers of syscall called by task
-    syscall_times: [u32; MAX_SYSCALL_NUM],
-    /// Total running time of task
-    time: usize,
-}
+// /// Task information
+// #[allow(dead_code)]
+// pub struct TaskInfo {
+//     /// Task status in it's life cycle
+//     status: TaskStatus,
+//     /// The numbers of syscall called by task
+//     syscall_times: [u32; MAX_SYSCALL_NUM],
+//     /// Total running time of task
+//     time: usize,
+// }
 
 /// task exits and submit an exit code
 pub fn sys_exit(_exit_code: i32) -> ! {
@@ -59,22 +59,25 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TaskInfo`] is splitted by two pages ?
 pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
-
+    let ti = &get_current_task();
+    copy_data_to_user_space(current_user_token(), _ti as *const u8, ti);
 
     trace!("kernel: sys_task_info NOT IMPLEMENTED YET!");
-    -1
+    0
 }
 
 // YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
+
+    //print!("_start:{}, _len:{}\n", _start, _len);
     trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    -1
+    mmap(_start, _len, _port)
 }
 
 // YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
-    -1
+    munmap(_start, _len)
 }
 /// change data segment size
 pub fn sys_sbrk(size: i32) -> isize {
