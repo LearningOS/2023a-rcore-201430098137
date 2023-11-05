@@ -128,17 +128,27 @@ impl PageTable {
     }
     /// set the map between virtual page number and physical page number
     #[allow(unused)]
-    pub fn map(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
+    pub fn map(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) -> bool {
         let pte = self.find_pte_create(vpn).unwrap();
+        if pte.is_valid() {
+            print!("vpn {:?} is mapped before mapping", vpn);
+            return false;
+        }
         assert!(!pte.is_valid(), "vpn {:?} is mapped before mapping", vpn);
         *pte = PageTableEntry::new(ppn, flags | PTEFlags::V);
+        true
     }
     /// remove the map between virtual page number and physical page number
     #[allow(unused)]
-    pub fn unmap(&mut self, vpn: VirtPageNum) {
+    pub fn unmap(&mut self, vpn: VirtPageNum) -> bool {
         let pte = self.find_pte(vpn).unwrap();
-        assert!(pte.is_valid(), "vpn {:?} is invalid before unmapping", vpn);
+        if !pte.is_valid() {
+            print!("vpn {:?} is invalid before unmapping", vpn);
+            return false;
+        }
+        //assert!(pte.is_valid(), "vpn {:?} is invalid before unmapping", vpn);
         *pte = PageTableEntry::empty();
+        return true;
     }
     /// get the page table entry from the virtual page number
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {

@@ -1,8 +1,8 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT_BASE;
-use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
+use crate::config::{TRAP_CONTEXT_BASE, MAX_SYSCALL_NUM};
+use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE, MapPermission};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
@@ -51,7 +51,7 @@ pub struct TaskControlBlockInner {
     pub task_status: TaskStatus,
 
     /// Application address space
-    pub memory_set: MemorySet,
+    pub memory_set: UPSafeCell<MemorySet>,
 
     /// Parent process of the current process.
     /// Weak will not affect the reference count of the parent
@@ -68,6 +68,12 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    /// The numbers of syscall called by task
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
+
+    /// start time of task
+    pub start_time: usize,
 }
 
 impl TaskControlBlockInner {
@@ -77,7 +83,7 @@ impl TaskControlBlockInner {
     }
     /// get the user token
     pub fn get_user_token(&self) -> usize {
-        self.memory_set.token()
+        self.memory_set.readonly_access().token()
     }
     fn get_status(&self) -> TaskStatus {
         self.task_status
@@ -112,12 +118,14 @@ impl TaskControlBlock {
                     base_size: user_sp,
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
-                    memory_set,
+                    memory_set: unsafe { UPSafeCell::new(memory_set)},
                     parent: None,
                     children: Vec::new(),
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    syscall_times: [0; MAX_SYSCALL_NUM],
+                    start_time: 0,
                 })
             },
         };
@@ -221,13 +229,12 @@ impl TaskControlBlock {
             return None;
         }
         let result = if size < 0 {
-            inner
-                .memory_set
+            self.memory_set.exclusive_access()
                 .shrink_to(VirtAddr(heap_bottom), VirtAddr(new_brk as usize))
         } else {
-            inner
-                .memory_set
+            self.memory_set.exclusive_access()
                 .append_to(VirtAddr(heap_bottom), VirtAddr(new_brk as usize))
+
         };
         if result {
             inner.program_brk = new_brk as usize;
@@ -235,6 +242,25 @@ impl TaskControlBlock {
         } else {
             None
         }
+    }
+
+    /// Assume that no conflicts.
+    pub fn insert_framed_area(
+        &self,
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+        map_perm: MapPermission
+    ) -> bool {
+        self.memory_set.exclusive_access().insert_framed_area(start_va, end_va, map_perm)
+    }
+
+    /// free framed area
+    pub fn free_framed_area(
+        &self,
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+    ) -> bool {
+        self.memory_set.exclusive_access().free_framed_area(start_va, end_va)
     }
 }
 

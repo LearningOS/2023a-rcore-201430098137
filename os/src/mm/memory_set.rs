@@ -1,4 +1,5 @@
 //! Implementation of [`MapArea`] and [`MemorySet`].
+
 use super::{frame_alloc, FrameTracker};
 use super::{PTEFlags, PageTable, PageTableEntry};
 use super::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
@@ -54,11 +55,21 @@ impl MemorySet {
         start_va: VirtAddr,
         end_va: VirtAddr,
         permission: MapPermission,
-    ) {
+    ) -> bool {
         self.push(
             MapArea::new(start_va, end_va, MapType::Framed, permission),
             None,
-        );
+        )
+    }
+
+    /// Assume that no conflicts.
+    pub fn free_framed_area(
+        &mut self,
+        start_va: VirtAddr,
+        end_va: VirtAddr
+    ) -> bool {
+        let mut map_area = MapArea::new(start_va, end_va, MapType::Framed, MapPermission::empty());
+        map_area.unmap(&mut self.page_table)
     }
     /// remove a area
     pub fn remove_area_with_start_vpn(&mut self, start_vpn: VirtPageNum) {
@@ -75,12 +86,13 @@ impl MemorySet {
     /// Add a new MapArea into this MemorySet.
     /// Assuming that there are no conflicts in the virtual address
     /// space.
-    fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
+    fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) -> bool {
         map_area.map(&mut self.page_table);
         if let Some(data) = data {
             map_area.copy_data(&mut self.page_table, data);
         }
         self.areas.push(map_area);
+        return true;
     }
     /// Mention that trampoline is not collected by areas.
     fn map_trampoline(&mut self) {
@@ -346,35 +358,44 @@ impl MapArea {
             }
         }
         let pte_flags = PTEFlags::from_bits(self.map_perm.bits).unwrap();
-        page_table.map(vpn, ppn, pte_flags);
+        //print!("vpn = {}, ppn = {}\n", vpn.0, ppn.0);
+        page_table.map(vpn, ppn, pte_flags)
     }
-    pub fn unmap_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
+
+    pub fn unmap_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) -> bool {
         if self.map_type == MapType::Framed {
             self.data_frames.remove(&vpn);
         }
-        page_table.unmap(vpn);
+        page_table.unmap(vpn)
     }
-    pub fn map(&mut self, page_table: &mut PageTable) {
+    pub fn map(&mut self, page_table: &mut PageTable) -> bool {
         for vpn in self.vpn_range {
-            self.map_one(page_table, vpn);
+            if !self.map_one(page_table, vpn) {
+                return false;
+            }
         }
+        return true;
     }
-    pub fn unmap(&mut self, page_table: &mut PageTable) {
+
+    pub fn unmap(&mut self, page_table: &mut PageTable) -> bool {
         for vpn in self.vpn_range {
-            self.unmap_one(page_table, vpn);
+            if !self.unmap_one(page_table, vpn) {
+                return false;
+            }
         }
+        return true;
     }
     #[allow(unused)]
     pub fn shrink_to(&mut self, page_table: &mut PageTable, new_end: VirtPageNum) {
         for vpn in VPNRange::new(new_end, self.vpn_range.get_end()) {
-            self.unmap_one(page_table, vpn)
+            self.unmap_one(page_table, vpn);
         }
         self.vpn_range = VPNRange::new(self.vpn_range.get_start(), new_end);
     }
     #[allow(unused)]
     pub fn append_to(&mut self, page_table: &mut PageTable, new_end: VirtPageNum) {
         for vpn in VPNRange::new(self.vpn_range.get_end(), new_end) {
-            self.map_one(page_table, vpn)
+            self.map_one(page_table, vpn);
         }
         self.vpn_range = VPNRange::new(self.vpn_range.get_start(), new_end);
     }
@@ -421,6 +442,32 @@ bitflags! {
         ///Accessible in U mode
         const U = 1 << 4;
     }
+}
+
+impl From<usize> for MapPermission {
+    fn from(v: usize) -> Self {
+        let v = v as u32;
+        let mut map_perm = MapPermission::empty();
+        if v & 0x1 > 0 {
+            //print!("R\n");
+            map_perm = map_perm | MapPermission::R;
+        }
+        if v & 0x2 > 0 {
+            //print!("W\n");
+            map_perm = map_perm | MapPermission::W;
+        }
+        if v & 0x4 > 0 {
+            //print!("X\n");
+            map_perm = map_perm | MapPermission::X;
+        }
+
+        if v & 0x8 > 0 {
+            //print!("X\n");
+            map_perm = map_perm | MapPermission::U;
+        }
+        map_perm
+    }
+
 }
 
 /// remap test in kernel space

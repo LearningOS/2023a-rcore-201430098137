@@ -7,7 +7,7 @@ use crate::{
     mm::{translated_refmut, translated_str, copy_data_to_user_space},
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next, TaskStatus,
+        suspend_current_and_run_next, TaskStatus, get_current_task, mmap, munmap, TaskInfo
     },
     timer
 };
@@ -19,16 +19,16 @@ pub struct TimeVal {
     pub usec: usize,
 }
 
-/// Task information
-#[allow(dead_code)]
-pub struct TaskInfo {
-    /// Task status in it's life cycle
-    status: TaskStatus,
-    /// The numbers of syscall called by task
-    syscall_times: [u32; MAX_SYSCALL_NUM],
-    /// Total running time of task
-    time: usize,
-}
+// /// Task information
+// #[allow(dead_code)]
+// pub struct TaskInfo {
+//     /// Task status in it's life cycle
+//     status: TaskStatus,
+//     /// The numbers of syscall called by task
+//     syscall_times: [u32; MAX_SYSCALL_NUM],
+//     /// Total running time of task
+//     time: usize,
+// }
 
 /// task exits and submit an exit code
 pub fn sys_exit(exit_code: i32) -> ! {
@@ -141,7 +141,9 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
         "kernel:pid[{}] sys_task_info NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    let ti = &get_current_task();
+    copy_data_to_user_space(current_user_token(), _ti as *const u8, ti);
+    0
 }
 
 /// YOUR JOB: Implement mmap.
@@ -150,7 +152,7 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
         "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    mmap(_start, _len, _port)
 }
 
 /// YOUR JOB: Implement munmap.
@@ -159,7 +161,7 @@ pub fn sys_munmap(_start: usize, _len: usize) -> isize {
         "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    munmap(_start, _len)
 }
 
 /// change data segment size

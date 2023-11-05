@@ -115,3 +115,27 @@ lazy_static! {
 pub fn add_initproc() {
     add_task(INITPROC.clone());
 }
+
+/// count the number of syscall of the current task
+pub fn count_numbers_of_syscall(syscall_id: usize) {
+    TASK_MANAGER.count_numbers_of_syscall(syscall_id);
+}
+
+/// get current `Running` task info
+pub fn get_current_task() -> TaskInfo {
+    TASK_MANAGER.get_current_task()
+}
+
+
+///map memory of current task
+pub fn mmap(_start: usize, _len: usize, _port: usize) -> isize {
+    TASK_MANAGER.mmap(_start, _len, _port)
+}
+
+///map memory of current task
+pub fn munmap(_start: usize, _len: usize) -> isize {
+    TASK_MANAGER.munmap(_start, _len)
+}
+
+
+
