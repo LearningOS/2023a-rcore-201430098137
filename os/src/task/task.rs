@@ -8,6 +8,7 @@ use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use core::cell::RefMut;
+use crate::timer;
 
 /// Task control block structure
 ///
@@ -51,7 +52,7 @@ pub struct TaskControlBlockInner {
     pub task_status: TaskStatus,
 
     /// Application address space
-    pub memory_set: UPSafeCell<MemorySet>,
+    pub memory_set: MemorySet,
 
     /// Parent process of the current process.
     /// Weak will not affect the reference count of the parent
@@ -76,6 +77,16 @@ pub struct TaskControlBlockInner {
     pub start_time: usize,
 }
 
+/// task info
+pub struct TaskInfo {
+    /// Task status in it's life cycle
+    pub status: TaskStatus,
+    /// The numbers of syscall called by task
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
+    /// Total running time of task
+    pub time: usize,
+}
+
 impl TaskControlBlockInner {
     /// get the trap context
     pub fn get_trap_cx(&self) -> &'static mut TrapContext {
@@ -83,7 +94,7 @@ impl TaskControlBlockInner {
     }
     /// get the user token
     pub fn get_user_token(&self) -> usize {
-        self.memory_set.readonly_access().token()
+        self.memory_set.token()
     }
     fn get_status(&self) -> TaskStatus {
         self.task_status
@@ -118,7 +129,7 @@ impl TaskControlBlock {
                     base_size: user_sp,
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
-                    memory_set: unsafe { UPSafeCell::new(memory_set)},
+                    memory_set: memory_set,
                     parent: None,
                     children: Vec::new(),
                     exit_code: 0,
@@ -193,12 +204,14 @@ impl TaskControlBlock {
                     base_size: parent_inner.base_size,
                     task_cx: TaskContext::goto_trap_return(kernel_stack_top),
                     task_status: TaskStatus::Ready,
-                    memory_set,
+                    memory_set: memory_set,
                     parent: Some(Arc::downgrade(self)),
                     children: Vec::new(),
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    start_time: timer::get_time_ms(),
+                    syscall_times: [0; MAX_SYSCALL_NUM],
                 })
             },
         });
@@ -229,10 +242,10 @@ impl TaskControlBlock {
             return None;
         }
         let result = if size < 0 {
-            self.memory_set.exclusive_access()
+            self.inner_exclusive_access().memory_set
                 .shrink_to(VirtAddr(heap_bottom), VirtAddr(new_brk as usize))
         } else {
-            self.memory_set.exclusive_access()
+            self.inner_exclusive_access().memory_set
                 .append_to(VirtAddr(heap_bottom), VirtAddr(new_brk as usize))
 
         };
@@ -251,7 +264,8 @@ impl TaskControlBlock {
         end_va: VirtAddr,
         map_perm: MapPermission
     ) -> bool {
-        self.memory_set.exclusive_access().insert_framed_area(start_va, end_va, map_perm)
+
+        self.inner_exclusive_access().memory_set.insert_framed_area(start_va, end_va, map_perm)
     }
 
     /// free framed area
@@ -260,7 +274,7 @@ impl TaskControlBlock {
         start_va: VirtAddr,
         end_va: VirtAddr,
     ) -> bool {
-        self.memory_set.exclusive_access().free_framed_area(start_va, end_va)
+        self.inner_exclusive_access().memory_set.free_framed_area(start_va, end_va)
     }
 }
 

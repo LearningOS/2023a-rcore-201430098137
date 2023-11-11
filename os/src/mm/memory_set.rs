@@ -345,7 +345,7 @@ impl MapArea {
             map_perm: another.map_perm,
         }
     }
-    pub fn map_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
+    pub fn map_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) -> bool {
         let ppn: PhysPageNum;
         match self.map_type {
             MapType::Identical => {

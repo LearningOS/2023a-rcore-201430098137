@@ -26,13 +26,13 @@ use alloc::sync::Arc;
 use lazy_static::*;
 pub use manager::{fetch_task, TaskManager};
 use switch::__switch;
-pub use task::{TaskControlBlock, TaskStatus};
+pub use task::{TaskControlBlock, TaskStatus, TaskInfo};
 
 pub use context::TaskContext;
 pub use id::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
 pub use manager::add_task;
 pub use processor::{
-    current_task, current_trap_cx, current_user_token, run_tasks, schedule, take_current_task,
+    current_task, current_trap_cx, current_user_token, run_tasks, schedule, take_current_task,get_current_task, mmap, munmap, count_numbers_of_syscall,
     Processor,
 };
 /// Suspend the current 'Running' task and run the next task in task list.
@@ -116,26 +116,26 @@ pub fn add_initproc() {
     add_task(INITPROC.clone());
 }
 
-/// count the number of syscall of the current task
-pub fn count_numbers_of_syscall(syscall_id: usize) {
-    TASK_MANAGER.count_numbers_of_syscall(syscall_id);
-}
-
-/// get current `Running` task info
-pub fn get_current_task() -> TaskInfo {
-    TASK_MANAGER.get_current_task()
-}
-
-
-///map memory of current task
-pub fn mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    TASK_MANAGER.mmap(_start, _len, _port)
-}
-
-///map memory of current task
-pub fn munmap(_start: usize, _len: usize) -> isize {
-    TASK_MANAGER.munmap(_start, _len)
-}
+// /// count the number of syscall of the current task
+// pub fn count_numbers_of_syscall(syscall_id: usize) {
+//     TASK_MANAGER.count_numbers_of_syscall(syscall_id);
+// }
+//
+// /// get current `Running` task info
+// pub fn get_current_task() -> TaskInfo {
+//     TASK_MANAGER.get_current_task()
+// }
+//
+//
+// ///map memory of current task
+// pub fn mmap(_start: usize, _len: usize, _port: usize) -> isize {
+//     TASK_MANAGER.mmap(_start, _len, _port)
+// }
+//
+// ///map memory of current task
+// pub fn munmap(_start: usize, _len: usize) -> isize {
+//     TASK_MANAGER.munmap(_start, _len)
+// }
 
 
 

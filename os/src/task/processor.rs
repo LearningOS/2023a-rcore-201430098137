@@ -11,6 +11,9 @@ use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use lazy_static::*;
+use crate::mm::{MapPermission, VirtAddr};
+use crate::task::task::TaskInfo;
+use crate::timer;
 
 /// Processor management structure
 pub struct Processor {
@@ -43,6 +46,71 @@ impl Processor {
     ///Get current task in cloning semanteme
     pub fn current(&self) -> Option<Arc<TaskControlBlock>> {
         self.current.as_ref().map(Arc::clone)
+    }
+
+    /// count numbers of syscall called by task
+    pub fn count_numbers_of_syscall(&self, syscall_id: usize) {
+        let task = self.current().unwrap();
+        task.inner_exclusive_access().syscall_times[syscall_id] += 1;
+    }
+
+    /// get current `Running` task info
+    pub fn get_current_task(&self) -> TaskInfo {
+        let task = self.current().unwrap();
+        let inner = task.inner_exclusive_access();
+        //print!("start_time:{}, time:{}\n", task.start_time, timer::get_time_us()/1000);
+        TaskInfo{
+            status: inner.task_status,
+            syscall_times: inner.syscall_times.clone(),
+            time: timer::get_time_ms() - inner.start_time,
+        }
+    }
+
+    ///map memory of current task
+    pub fn mmap(&self, _start: usize, _len: usize, _port: usize) -> isize {
+        let start = VirtAddr::from(_start);
+        if start.page_offset() != 0 {
+            return -1;
+        }
+
+        let mut map_perm = MapPermission::from(_port);
+        if map_perm & MapPermission::U != MapPermission::empty() {
+            return -1;
+        }
+
+        if map_perm & (MapPermission::X | MapPermission::W | MapPermission::R) == MapPermission::empty() {
+            return -1;
+        }
+
+        map_perm = map_perm | MapPermission::U;
+
+        let end= VirtAddr::from(_start + _len);
+        let task = self.current().unwrap();
+
+
+        //print!("_port:{}", _port as u8);
+        if !task.insert_framed_area(start, end, map_perm) {
+            return -1;
+        }
+
+
+        0
+    }
+
+    ///uumap
+    pub fn munmap(&self, _start: usize, _len: usize) -> isize {
+        let start = VirtAddr::from(_start);
+        if start.page_offset() != 0 {
+            return -1;
+        }
+        let end= VirtAddr::from(_start + _len);
+        let task = self.current().unwrap();
+
+        if !task.free_framed_area(start, end) {
+            return -1;
+        }
+
+        0
     }
 }
 
@@ -108,4 +176,25 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     unsafe {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }
+}
+
+/// count the number of syscall of the current task
+pub fn count_numbers_of_syscall(syscall_id: usize) {
+    PROCESSOR.exclusive_access().count_numbers_of_syscall(syscall_id);
+}
+
+/// get current `Running` task info
+pub fn get_current_task() -> TaskInfo {
+    PROCESSOR.readonly_access().get_current_task()
+}
+
+
+///map memory of current task
+pub fn mmap(_start: usize, _len: usize, _port: usize) -> isize {
+    PROCESSOR.exclusive_access().mmap(_start, _len, _port)
+}
+
+///map memory of current task
+pub fn munmap(_start: usize, _len: usize) -> isize {
+    PROCESSOR.exclusive_access().munmap(_start, _len)
 }
