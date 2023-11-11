@@ -180,7 +180,21 @@ pub fn sys_spawn(_path: *const u8) -> isize {
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+
+    let token = current_user_token();
+    let path = translated_str(token, _path);
+
+    if let Some(data) = get_app_data_by_name(path.as_str()) {
+        let task = current_task().unwrap();
+        // create new processor run app within the path
+        let new_task = task.spawn(data);
+        let new_pid = new_task.pid.0;
+        // add new task to scheduler
+        add_task(new_task);
+        new_pid as isize
+    } else {
+        -1
+    }
 }
 
 // YOUR JOB: Set task priority.
@@ -189,5 +203,11 @@ pub fn sys_set_priority(_prio: isize) -> isize {
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+    if _prio <= 1 {
+        return -1;
+    }
+
+    let task = current_task().unwrap();
+    task.inner_exclusive_access().priority = _prio as usize;
+    _prio
 }

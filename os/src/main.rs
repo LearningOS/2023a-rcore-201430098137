@@ -24,6 +24,7 @@
 #![feature(panic_info_message)]
 #![feature(alloc_error_handler)]
 #![feature(core_intrinsics)]
+#![feature(linked_list_remove)]
 
 #[macro_use]
 extern crate bitflags;

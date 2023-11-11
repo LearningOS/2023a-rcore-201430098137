@@ -75,7 +75,16 @@ pub struct TaskControlBlockInner {
 
     /// start time of task
     pub start_time: usize,
+
+    /// stride of the task
+    /// stride = stride + big_stride/priority
+    pub stride: usize,
+
+    /// priority of the task
+    pub priority: usize,
 }
+
+
 
 /// task info
 pub struct TaskInfo {
@@ -137,6 +146,8 @@ impl TaskControlBlock {
                     program_brk: user_sp,
                     syscall_times: [0; MAX_SYSCALL_NUM],
                     start_time: 0,
+                    stride: 0,
+                    priority: 16,
                 })
             },
         };
@@ -212,6 +223,8 @@ impl TaskControlBlock {
                     program_brk: parent_inner.program_brk,
                     start_time: timer::get_time_ms(),
                     syscall_times: [0; MAX_SYSCALL_NUM],
+                    stride:0,
+                    priority:16,
                 })
             },
         });
@@ -225,6 +238,60 @@ impl TaskControlBlock {
         task_control_block
         // **** release child PCB
         // ---- release parent PCB
+    }
+
+    /// spawn is create a new processor to run defined app
+    pub fn spawn(self: &Arc<Self>, elf_data: &[u8]) -> Arc<Self> {
+        // memory_set with elf program headers/trampoline/trap context/user stack
+        let (memory_set, user_sp, entry_point) = MemorySet::from_elf(elf_data);
+        let trap_cx_ppn = memory_set
+            .translate(VirtAddr::from(TRAP_CONTEXT_BASE).into())
+            .unwrap()
+            .ppn();
+
+        // alloc a pid and a kernel stack in kernel space
+        let pid_handle = pid_alloc();
+        let kernel_stack = kstack_alloc();
+        let kernel_stack_top = kernel_stack.get_top();
+        let task_control_block = Arc::new(TaskControlBlock {
+            pid: pid_handle,
+            kernel_stack,
+            inner: unsafe {
+                UPSafeCell::new(TaskControlBlockInner {
+                    trap_cx_ppn,
+                    base_size: user_sp,
+                    task_cx: TaskContext::goto_trap_return(kernel_stack_top),
+                    task_status: TaskStatus::Ready,
+                    memory_set: memory_set,
+                    parent: Some(Arc::downgrade(self)),
+                    children: Vec::new(),
+                    exit_code: 0,
+                    heap_bottom: user_sp,
+                    program_brk: user_sp,
+                    start_time: timer::get_time_ms(),
+                    syscall_times: [0; MAX_SYSCALL_NUM],
+                    stride:0,
+                    priority:16,
+                })
+            },
+        });
+
+        // ---- access parent PCB exclusively
+        let mut parent_inner = self.inner_exclusive_access();
+        // add child
+        parent_inner.children.push(task_control_block.clone());
+        // initialize trap_cx
+        let trap_cx = task_control_block.inner_exclusive_access().get_trap_cx();
+        *trap_cx = TrapContext::app_init_context(
+            entry_point,
+            user_sp,
+            KERNEL_SPACE.exclusive_access().token(),
+            kernel_stack_top,
+            trap_handler as usize,
+        );
+        // return
+        task_control_block
+        // **** release inner automatically
     }
 
     /// get pid of process

@@ -87,7 +87,9 @@ impl MemorySet {
     /// Assuming that there are no conflicts in the virtual address
     /// space.
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) -> bool {
-        map_area.map(&mut self.page_table);
+        if !map_area.map(&mut self.page_table) {
+            return false;
+        }
         if let Some(data) = data {
             map_area.copy_data(&mut self.page_table, data);
         }

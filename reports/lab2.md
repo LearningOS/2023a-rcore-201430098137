@@ -1,4 +1,4 @@
-# 实验1
+# 实验2
 - 增加按字节从内核空间复制数据到用户空间的方法,并用在了sys_task_info和sys_get_time两个系统调用上
 - 将TaskControlBlock结构中的memory_set改成内部可变性结构，用于动态内存映射和解除映射
 - 实现free_framed_area方法解除映射和复用insert_framed_area实现动态映射

@@ -35,6 +35,8 @@ pub use processor::{
     current_task, current_trap_cx, current_user_token, run_tasks, schedule, take_current_task,get_current_task, mmap, munmap, count_numbers_of_syscall,
     Processor,
 };
+use crate::config::BIG_STRIDE;
+
 /// Suspend the current 'Running' task and run the next task in task list.
 pub fn suspend_current_and_run_next() {
     // There must be an application running.
@@ -42,6 +44,8 @@ pub fn suspend_current_and_run_next() {
 
     // ---- access current TCB exclusively
     let mut task_inner = task.inner_exclusive_access();
+    // add  BIG_STRIDE / priority to stride
+    task_inner.stride = task_inner.stride + BIG_STRIDE / task_inner.priority;
     let task_cx_ptr = &mut task_inner.task_cx as *mut TaskContext;
     // Change status to Ready
     task_inner.task_status = TaskStatus::Ready;
